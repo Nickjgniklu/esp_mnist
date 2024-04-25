@@ -26,7 +26,7 @@ namespace
   tflite::MicroInterpreter *interpreter = nullptr;
   TfLiteTensor *input = nullptr;
   // An area of memory to use for input, output, and intermediate arrays.
-  const int kTensorArenaSize = 30 * 1024;
+  const int kTensorArenaSize = 35 * 1024;
   static uint8_t tensor_arena[kTensorArenaSize];
   using AllOpsResolver = tflite::MicroMutableOpResolver<128>;
 
