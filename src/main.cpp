@@ -7,6 +7,7 @@
 #include <WiFi.h>
 #include <WebServer.h>
 
+#include "fb_gfx.h"
 #include "main_functions.h"
 #include "image_provider.h"
 #include "model_settings.h"
@@ -21,11 +22,6 @@
 #include "sampleDigits/sampleDigits.h"
 #include "mbedtls/base64.h"
 
-#include "manual_streamer.h"
-#include "CRtspSession.h"
-#include "platglue-esp32.h"
-
-#define ENABLE_RTSPSERVER
 // #define SOFTAP_MODE
 #define ENABLE_MJPEG
 #define TAG "main"
@@ -52,12 +48,7 @@ void updateJpegBuffer()
   ESP_LOGI(TAG, "update jpeg buffer");
 
   Serial.println("Setup fb");
-  grayScalefb->buf = grayScaleBuffer;
-  grayScalefb->format = PIXFORMAT_GRAYSCALE;
-  grayScalefb->len = raw_image_size;
-  grayScalefb->timestamp = {0, 0};
-  grayScalefb->height = 240;
-  grayScalefb->width = 320;
+
   free(jpegBytes); // free the previous buffer if any
   // frame2jpg will malloc the buffer for jpegBytes
   frame2jpg(grayScalefb, 50, &jpegBytes, &jpegSize);
@@ -87,6 +78,14 @@ void handleNotFound()
   message += "\n";
   server.send(200, "text / plain", message);
 }
+void fb_gfx_drawRect(fb_data_t *fb, int32_t x, int32_t y, int32_t w, int32_t h, uint32_t color)
+{
+  fb_gfx_drawFastHLine(fb, x, y, w, color);
+  fb_gfx_drawFastHLine(fb, x, y + h, w, color);
+  fb_gfx_drawFastVLine(fb, x, y, h, color);
+  fb_gfx_drawFastVLine(fb, x + w, y, h, color);
+}
+
 void handle_jpg_stream(void)
 {
   char buf[32];
@@ -104,6 +103,14 @@ void handle_jpg_stream(void)
     uint64_t index = (millis() / 100) % raw_image_size;
     Serial.println(index);
     grayScaleBuffer[index] = 255;
+    fb_data_t fbdata;
+    fbdata.data = grayScaleBuffer;
+    fbdata.width = grayScalefb->width;
+    fbdata.height = grayScalefb->height;
+    fbdata.format = FB_GRAY;
+    fbdata.bytes_per_pixel = 1;
+    fb_gfx_print(&fbdata, grayScalefb->width / 2, grayScalefb->height / 2, 127, "Hello World");
+    fb_gfx_drawRect(&fbdata, grayScalefb->width / 4, grayScalefb->height / 4, 127, 127, 127);
     updateJpegBuffer();
     delay(100); // TODO set frame rate and try and maintain it
     client.write(CTNTTYPE, cntLen);
@@ -259,6 +266,13 @@ void initTFInterpreter()
 void setup()
 {
   grayScaleBuffer = (uint8_t *)ps_malloc(raw_image_size);
+
+  grayScalefb->buf = grayScaleBuffer;
+  grayScalefb->format = PIXFORMAT_GRAYSCALE;
+  grayScalefb->len = 0;
+  grayScalefb->timestamp = {0, 0};
+  grayScalefb->height = 240;
+  grayScalefb->width = 320;
 
   initSerial();
   initTFInterpreter();
