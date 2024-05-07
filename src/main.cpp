@@ -31,6 +31,10 @@ size_t jpegSize;
 size_t raw_image_size = (320 * 240);
 camera_fb_t *grayScalefb = new camera_fb_t();
 
+/// @brief Writes the jpeg bytes to the serial port as a base64 encoded string
+/// use JpegFilter to extract the jpeg bytes and save them to a file
+/// @param jpegBytes // the jpeg bytes to write
+/// @param jpegSize // the length of the jpeg bytes
 void serialWriteJpeg(uint8_t *jpegBytes, size_t jpegSize)
 {
   Serial.print("StartJPEG123456");
@@ -43,6 +47,8 @@ void serialWriteJpeg(uint8_t *jpegBytes, size_t jpegSize)
   Serial.print("EndJPEG123456");
 }
 
+/// @brief Updates the jpeg buffer with the current frame
+/// from the grayScaleBuffer
 void updateJpegBuffer()
 {
   ESP_LOGI(TAG, "update jpeg buffer");
@@ -66,6 +72,7 @@ const int hdrLen = strlen(HEADER);
 const int bdrLen = strlen(BOUNDARY);
 const int cntLen = strlen(CTNTTYPE);
 
+/// @brief Handles attempts at undefined routes
 void handleNotFound()
 {
   String message = "Server is running!\n\n";
@@ -78,6 +85,8 @@ void handleNotFound()
   message += "\n";
   server.send(200, "text / plain", message);
 }
+
+/// @brief Draws a hollow rectangle on the frame buffer
 void fb_gfx_drawRect(fb_data_t *fb, int32_t x, int32_t y, int32_t w, int32_t h, uint32_t color)
 {
   fb_gfx_drawFastHLine(fb, x, y, w, color);
@@ -86,6 +95,7 @@ void fb_gfx_drawRect(fb_data_t *fb, int32_t x, int32_t y, int32_t w, int32_t h, 
   fb_gfx_drawFastVLine(fb, x + w, y, h, color);
 }
 
+/// @brief called when a client connects to the mjpeg stream
 void handle_jpg_stream(void)
 {
   char buf[32];
@@ -327,7 +337,7 @@ void setup()
   updateJpegBuffer();
 }
 
-/// Returns the index of the max value
+/// @brief Returns the index of the max value
 uint oneHotDecode(TfLiteTensor *layer)
 {
   int max = 0;
@@ -381,6 +391,7 @@ uint inferNumberImage(int8_t *mnistimage)
   return result;
 }
 
+/// @brief Tests the preloaded images of numbers
 void testPreloadedNumbers()
 {
   Serial.print("Testing One. Result:");
@@ -404,6 +415,7 @@ void testPreloadedNumbers()
   Serial.print("Testing nine. Result:");
   Serial.println(num);
 }
+
 void loop()
 {
 
