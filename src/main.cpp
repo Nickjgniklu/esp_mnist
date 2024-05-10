@@ -56,7 +56,8 @@ void updateJpegBuffer()
   Serial.println("Setup fb");
 
   free(jpegBytes); // free the previous buffer if any
-  // frame2jpg will malloc the buffer for jpegBytes
+                   // frame2jpg will malloc the buffer for jpegBytes
+                   // gain lock the buffer should not change mid frame
   frame2jpg(grayScalefb, 50, &jpegBytes, &jpegSize);
   // serialWriteJpeg(jpegBytes, jpegSize);
   ESP_LOGI(TAG, "updated jpeg buffer");
@@ -110,9 +111,7 @@ void handle_jpg_stream(void)
   {
     if (!client.connected())
       break;
-    uint64_t index = (millis() / 100) % raw_image_size;
-    Serial.println(index);
-    grayScaleBuffer[index] = 255;
+
     fb_data_t fbdata;
     fbdata.data = grayScaleBuffer;
     fbdata.width = grayScalefb->width;
@@ -121,13 +120,26 @@ void handle_jpg_stream(void)
     fbdata.bytes_per_pixel = 1;
     fb_gfx_print(&fbdata, grayScalefb->width / 2, grayScalefb->height / 2, 127, "Hello World");
     fb_gfx_drawRect(&fbdata, grayScalefb->width / 4, grayScalefb->height / 4, 127, 127, 127);
+    unsigned long startTime = millis();
+
     updateJpegBuffer();
+    unsigned long endTime = millis();
+    Serial.print("Time spent updating jpeg buffer:");
+    Serial.println(endTime - startTime);
+
     delay(100); // TODO set frame rate and try and maintain it
+    startTime = millis();
     client.write(CTNTTYPE, cntLen);
     sprintf(buf, "%d\r\n\r\n", jpegSize);
     client.write(buf, strlen(buf));
     client.write((char *)jpegBytes, jpegSize);
     client.write(BOUNDARY, bdrLen);
+    endTime = millis();
+    unsigned long frameRate = 1000 / (endTime - startTime);
+    Serial.print("Frame rate: ");
+    Serial.println(frameRate);
+    Serial.print("Time spent sending frame");
+    Serial.println(endTime - startTime);
   }
 }
 #endif
@@ -273,6 +285,22 @@ void initTFInterpreter()
   error_reporter->Report(TfLiteTypeGetName(output->type));
   error_reporter->Report("Arena Used:%d bytes of memory", interpreter->arena_used_bytes());
 }
+void writeGrayScaleBuffer(uint index, uint8_t value)
+{
+  grayScaleBuffer[index] = value;
+}
+void updateImageTask(void *param)
+{
+  while (true)
+  {
+    uint64_t index = (millis() / 100) % raw_image_size;
+    // Serial.println(index);
+
+    writeGrayScaleBuffer(index, 255);
+    delay(10);
+  }
+}
+
 void setup()
 {
   grayScaleBuffer = (uint8_t *)ps_malloc(raw_image_size);
@@ -335,6 +363,9 @@ void setup()
     grayScaleBuffer[i] = (i % 2) ? 0 : 255;
   }
   updateJpegBuffer();
+  xTaskCreate(
+      updateImageTask,
+      "camera_task", 1024 * 2, NULL, 1, NULL);
 }
 
 /// @brief Returns the index of the max value
@@ -418,6 +449,7 @@ void testPreloadedNumbers()
 
 void loop()
 {
+  // start task
 
   //  testPreloadedNumbers();
   server.handleClient();
