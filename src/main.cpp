@@ -21,6 +21,7 @@
 #include "camera_config.h"
 #include "sampleDigits/sampleDigits.h"
 #include "mbedtls/base64.h"
+#include "ImageFormater.h"
 
 // #define SOFTAP_MODE
 #define ENABLE_MJPEG
@@ -30,126 +31,8 @@ uint8_t *jpegBytes;
 size_t jpegSize;
 size_t raw_image_size = (320 * 240);
 camera_fb_t *grayScalefb = new camera_fb_t();
-
-/// @brief Writes the jpeg bytes to the serial port as a base64 encoded string
-/// use JpegFilter to extract the jpeg bytes and save them to a file
-/// @param jpegBytes // the jpeg bytes to write
-/// @param jpegSize // the length of the jpeg bytes
-void serialWriteJpeg(uint8_t *jpegBytes, size_t jpegSize)
-{
-  Serial.print("StartJPEG123456");
-  size_t outlen;
-  size_t base64jpegBufferSize = 30000;
-  // Used for base64 encoding jpeg over
-  unsigned char *jpegEncodedBuffer = (unsigned char *)ps_malloc(base64jpegBufferSize);
-  mbedtls_base64_encode(jpegEncodedBuffer, base64jpegBufferSize, &outlen, jpegBytes, jpegSize);
-  Serial.write(jpegEncodedBuffer, outlen);
-  Serial.print("EndJPEG123456");
-}
-
-/// @brief Updates the jpeg buffer with the current frame
-/// from the grayScaleBuffer
-void updateJpegBuffer()
-{
-  ESP_LOGI(TAG, "update jpeg buffer");
-
-  Serial.println("Setup fb");
-
-  free(jpegBytes); // free the previous buffer if any
-                   // frame2jpg will malloc the buffer for jpegBytes
-                   // gain lock the buffer should not change mid frame
-  frame2jpg(grayScalefb, 50, &jpegBytes, &jpegSize);
-  // serialWriteJpeg(jpegBytes, jpegSize);
-  ESP_LOGI(TAG, "updated jpeg buffer");
-}
-#ifdef ENABLE_MJPEG
-WebServer server(80);
-const char HEADER[] = "HTTP/1.1 200 OK\r\n"
-                      "Access-Control-Allow-Origin: *\r\n"
-                      "Content-Type: multipart/x-mixed-replace; boundary=123456789000000000000987654321\r\n";
-const char BOUNDARY[] = "\r\n--123456789000000000000987654321\r\n";
-const char CTNTTYPE[] = "Content-Type: image/jpeg\r\nContent-Length: ";
-const int hdrLen = strlen(HEADER);
-const int bdrLen = strlen(BOUNDARY);
-const int cntLen = strlen(CTNTTYPE);
-
-/// @brief Handles attempts at undefined routes
-void handleNotFound()
-{
-  String message = "Server is running!\n\n";
-  message += "URI: ";
-  message += server.uri();
-  message += "\nMethod: ";
-  message += (server.method() == HTTP_GET) ? "GET" : "POST";
-  message += "\nArguments: ";
-  message += server.args();
-  message += "\n";
-  server.send(200, "text / plain", message);
-}
-
-/// @brief Draws a hollow rectangle on the frame buffer
-void fb_gfx_drawRect(fb_data_t *fb, int32_t x, int32_t y, int32_t w, int32_t h, uint32_t color)
-{
-  fb_gfx_drawFastHLine(fb, x, y, w, color);
-  fb_gfx_drawFastHLine(fb, x, y + h, w, color);
-  fb_gfx_drawFastVLine(fb, x, y, h, color);
-  fb_gfx_drawFastVLine(fb, x + w, y, h, color);
-}
-
-/// @brief called when a client connects to the mjpeg stream
-void handle_jpg_stream(void)
-{
-  char buf[32];
-  int s;
-
-  WiFiClient client = server.client();
-
-  client.write(HEADER, hdrLen);
-  client.write(BOUNDARY, bdrLen);
-
-  while (true)
-  {
-    if (!client.connected())
-      break;
-
-    fb_data_t fbdata;
-    fbdata.data = grayScaleBuffer;
-    fbdata.width = grayScalefb->width;
-    fbdata.height = grayScalefb->height;
-    fbdata.format = FB_GRAY;
-    fbdata.bytes_per_pixel = 1;
-    fb_gfx_print(&fbdata, grayScalefb->width / 2, grayScalefb->height / 2, 127, "Hello World");
-    fb_gfx_drawRect(&fbdata, grayScalefb->width / 4, grayScalefb->height / 4, 127, 127, 127);
-    unsigned long startTime = millis();
-
-    updateJpegBuffer();
-    unsigned long endTime = millis();
-    Serial.print("Time spent updating jpeg buffer:");
-    Serial.println(endTime - startTime);
-
-    delay(100); // TODO set frame rate and try and maintain it
-    startTime = millis();
-    client.write(CTNTTYPE, cntLen);
-    sprintf(buf, "%d\r\n\r\n", jpegSize);
-    client.write(buf, strlen(buf));
-    client.write((char *)jpegBytes, jpegSize);
-    client.write(BOUNDARY, bdrLen);
-    endTime = millis();
-    unsigned long frameRate = 1000 / (endTime - startTime);
-    Serial.print("Frame rate: ");
-    Serial.println(frameRate);
-    Serial.print("Time spent sending frame");
-    Serial.println(endTime - startTime);
-  }
-}
-#endif
-
-#ifdef SOFTAP_MODE
-IPAddress apIP = IPAddress(192, 168, 1, 1);
-#else
-#include "wifikeys.h"
-#endif
-
+OV2640 camera;
+ImageFormater formatter;
 namespace
 {
   tflite::ErrorReporter *error_reporter = nullptr;
@@ -226,6 +109,239 @@ namespace
     return TfLiteStatus::kTfLiteOk;
   }
 }
+/// @brief Writes the jpeg bytes to the serial port as a base64 encoded string
+/// use JpegFilter to extract the jpeg bytes and save them to a file
+/// @param jpegBytes // the jpeg bytes to write
+/// @param jpegSize // the length of the jpeg bytes
+void serialWriteJpeg(uint8_t *jpegBytes, size_t jpegSize)
+{
+  Serial.print("StartJPEG123456");
+  size_t outlen;
+  size_t base64jpegBufferSize = 30000;
+  // Used for base64 encoding jpeg over
+  unsigned char *jpegEncodedBuffer = (unsigned char *)ps_malloc(base64jpegBufferSize);
+  mbedtls_base64_encode(jpegEncodedBuffer, base64jpegBufferSize, &outlen, jpegBytes, jpegSize);
+  Serial.write(jpegEncodedBuffer, outlen);
+  Serial.print("EndJPEG123456");
+}
+
+/// @brief Updates the jpeg buffer with the current frame
+/// from the grayScaleBuffer
+void updateJpegBuffer()
+{
+  ESP_LOGI(TAG, "update jpeg buffer");
+
+  Serial.println("Setup fb");
+
+  free(jpegBytes); // free the previous buffer if any
+                   // frame2jpg will malloc the buffer for jpegBytes
+                   // gain lock the buffer should not change mid frame
+  frame2jpg(grayScalefb, 50, &jpegBytes, &jpegSize);
+  // serialWriteJpeg(jpegBytes, jpegSize);
+  ESP_LOGI(TAG, "updated jpeg buffer");
+}
+/// @brief Returns the index of the max value
+uint oneHotDecode(TfLiteTensor *layer)
+{
+  int max = 0;
+  uint result = 0;
+  for (uint i = 0; i < 10; i++)
+  {
+    // error_reporter->Report("num:%d score:%d", i,
+    //                     output->data.int8[i]);
+    if (layer->data.int8[i] > max)
+    {
+      result = i;
+      max = layer->data.int8[i];
+    }
+  }
+  return result;
+}
+
+int8_t uint8GrayscaleIint8(uint8_t uint8color)
+{
+  return (int8_t)(((int)uint8color) - 128); // is there a better way?
+}
+uint8_t int8GrayscaleUint8(int8_t int8color)
+{
+  return (uint8_t)(((int)int8color) + 128); // is there a better way?
+}
+
+uint inferNumberImage(int8_t *mnistimage)
+{
+  memcpy(input->data.int8, mnistimage, 28 * 28);
+  for (int i = 0; i < 28 * 28; i++)
+  {
+    input->data.int8[i] = mnistimage[i];
+  }
+  int start = millis();
+  error_reporter->Report("Invoking.");
+
+  if (kTfLiteOk != interpreter->Invoke()) // Any error i have in invoke tend to just crash the whole system so i dont usually see this message
+  {
+    error_reporter->Report("Invoke failed.");
+  }
+  else
+  {
+    error_reporter->Report("Invoke passed.");
+    error_reporter->Report(" Took :");
+    Serial.print(millis() - start);
+    error_reporter->Report(" milliseconds");
+  }
+
+  TfLiteTensor *output = interpreter->output(0);
+  uint result = oneHotDecode(output);
+  return result;
+}
+#ifdef ENABLE_MJPEG
+WebServer server(80);
+const char HEADER[] = "HTTP/1.1 200 OK\r\n"
+                      "Access-Control-Allow-Origin: *\r\n"
+                      "Content-Type: multipart/x-mixed-replace; boundary=123456789000000000000987654321\r\n";
+const char BOUNDARY[] = "\r\n--123456789000000000000987654321\r\n";
+const char CTNTTYPE[] = "Content-Type: image/jpeg\r\nContent-Length: ";
+const int hdrLen = strlen(HEADER);
+const int bdrLen = strlen(BOUNDARY);
+const int cntLen = strlen(CTNTTYPE);
+
+/// @brief Handles attempts at undefined routes
+void handleNotFound()
+{
+  String message = "Server is running!\n\n";
+  message += "URI: ";
+  message += server.uri();
+  message += "\nMethod: ";
+  message += (server.method() == HTTP_GET) ? "GET" : "POST";
+  message += "\nArguments: ";
+  message += server.args();
+  message += "\n";
+  server.send(200, "text / plain", message);
+}
+
+/// @brief Draws a hollow rectangle on the frame buffer
+void fb_gfx_drawRect(fb_data_t *fb, int32_t x, int32_t y, int32_t w, int32_t h, uint32_t color)
+{
+  fb_gfx_drawFastHLine(fb, x, y, w, color);
+  fb_gfx_drawFastHLine(fb, x, y + h, w, color);
+  fb_gfx_drawFastVLine(fb, x, y, h, color);
+  fb_gfx_drawFastVLine(fb, x + w, y, h, color);
+}
+void print_memory_info()
+{
+  uint32_t free_heap = esp_get_free_heap_size();
+  uint32_t total_psram = heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
+  uint32_t free_psram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+
+  ESP_LOGI("MemoryInfo", "Free internal heap: %u", free_heap);
+  ESP_LOGI("MemoryInfo", "Total PSRAM: %u", total_psram);
+  ESP_LOGI("MemoryInfo", "Free PSRAM: %u", free_psram);
+}
+
+/// @brief called when a client connects to the mjpeg stream
+void handle_jpg_stream(void)
+{
+  char buf[32];
+  int s;
+
+  WiFiClient client = server.client();
+
+  client.write(HEADER, hdrLen);
+  client.write(BOUNDARY, bdrLen);
+
+  while (true)
+  {
+    if (!client.connected())
+      break;
+    Serial.print("start frame");
+
+    print_memory_info();
+
+    ESP_LOGI(TAG, "Get Camera Frame");
+
+    camera.run();
+    ESP_LOGI(TAG, "Got Camera Frame");
+
+    // copy frame
+    memcpy(grayScaleBuffer, camera.getfb(), grayScalefb->width * grayScalefb->height);
+    ESP_LOGI(TAG, "Copy Camera Frame");
+
+    // convert to uint to int
+    // should do this inplace
+    ESP_LOGI(TAG, "Conversion to int8");
+
+    int8_t *raw = (int8_t *)ps_malloc(grayScalefb->height * grayScalefb->width * sizeof(int8_t));
+
+    for (int i = 0; i < grayScalefb->width * grayScalefb->height; i++)
+    {
+      raw[i] = uint8GrayscaleIint8(grayScaleBuffer[i]);
+    }
+    int8_t *mnist = (int8_t *)ps_malloc(28 * 28 * sizeof(int8_t));
+
+    // preprocess image into minst format
+    ESP_LOGI(TAG, "Create Mnist Image style from camera image");
+
+    formatter.CreateMnistImageFromImage(raw, grayScalefb->width, grayScalefb->height, mnist);
+    free(raw);
+    ESP_LOGI(TAG, "overlay  mnist image");
+
+    for (size_t i = 0; i < 28; i++)
+    {
+      for (size_t j = 0; j < 28; j++)
+      {
+        grayScaleBuffer[j + (grayScalefb->width * i)] = int8GrayscaleUint8(mnist[j + (28 * i)]);
+      }
+    }
+
+    ESP_LOGI(TAG, "infer mnist image");
+
+    uint result = inferNumberImage(mnist);
+    ESP_LOGI(TAG, "update image with result %d", result);
+
+    free(mnist);
+    fb_data_t fbdata;
+    fbdata.data = grayScaleBuffer;
+    fbdata.width = grayScalefb->width;
+    fbdata.height = grayScalefb->height;
+    fbdata.format = FB_GRAY;
+    fbdata.bytes_per_pixel = 1;
+    char resultString[20];
+    sprintf(resultString, "Result: %d", result);
+    fb_gfx_print(&fbdata, grayScalefb->width / 4, grayScalefb->height / 4, 127, resultString);
+    // fb_gfx_drawRect(&fbdata, grayScalefb->width / 4, grayScalefb->height / 4, 127, 127, 127);
+    // delay(10);
+
+    unsigned long startTime = millis();
+
+    updateJpegBuffer();
+    unsigned long endTime = millis();
+    Serial.print("Time spent updating jpeg buffer:");
+    Serial.println(endTime - startTime);
+
+    // delay(100); // TODO set frame rate and try and maintain it
+    startTime = millis();
+    client.write(CTNTTYPE, cntLen);
+    sprintf(buf, "%d\r\n\r\n", jpegSize);
+    client.write(buf, strlen(buf));
+    client.write((char *)jpegBytes, jpegSize);
+    client.write(BOUNDARY, bdrLen);
+    endTime = millis();
+    unsigned long frameRate = 1000 / (endTime - startTime);
+    Serial.print("Frame rate: ");
+    Serial.println(frameRate);
+    Serial.print("Time spent sending frame");
+    Serial.println(endTime - startTime);
+
+    print_memory_info();
+    Serial.print("end frame");
+  }
+}
+#endif
+
+#ifdef SOFTAP_MODE
+IPAddress apIP = IPAddress(192, 168, 1, 1);
+#else
+#include "wifikeys.h"
+#endif
 
 void initSerial()
 {
@@ -289,20 +405,43 @@ void writeGrayScaleBuffer(uint index, uint8_t value)
 {
   grayScaleBuffer[index] = value;
 }
+
+/// @brief Tests the preloaded images of numbers
+void testPreloadedNumbers()
+{
+  Serial.print("Testing One. Result:");
+
+  uint num = inferNumberImage(number1Sample);
+  Serial.print("Testing One. Result:");
+  Serial.println(num);
+  num = inferNumberImage(number2Sample);
+  Serial.print("Testing two. Result:");
+  Serial.println(num);
+  num = inferNumberImage(number4Sample);
+  Serial.print("Testing four. Result:");
+  Serial.println(num);
+  num = inferNumberImage(number5Sample);
+  Serial.print("Testing five. Result:");
+  Serial.println(num);
+  num = inferNumberImage(number8Sample);
+  Serial.print("Testing eight. Result:");
+  Serial.println(num);
+  num = inferNumberImage(number9Sample);
+  Serial.print("Testing nine. Result:");
+  Serial.println(num);
+}
+
 void updateImageTask(void *param)
 {
   while (true)
   {
-    uint64_t index = (millis() / 100) % raw_image_size;
-    // Serial.println(index);
-
-    writeGrayScaleBuffer(index, 255);
-    delay(10);
+    delay(1);
   }
 }
 
 void setup()
 {
+
   grayScaleBuffer = (uint8_t *)ps_malloc(raw_image_size);
 
   grayScalefb->buf = grayScaleBuffer;
@@ -315,6 +454,9 @@ void setup()
   initSerial();
   initTFInterpreter();
   IPAddress ip;
+  ESP_LOGI(TAG, "Starting Camera");
+  camera.init(esp32cam_ESPCam_config);
+  ESP_LOGI(TAG, "Started Camera");
 
 #ifdef SOFTAP_MODE
   const char *hostname = "devcam";
@@ -368,89 +510,9 @@ void setup()
       "camera_task", 1024 * 2, NULL, 1, NULL);
 }
 
-/// @brief Returns the index of the max value
-uint oneHotDecode(TfLiteTensor *layer)
-{
-  int max = 0;
-  uint result = 0;
-  for (uint i = 0; i < 10; i++)
-  {
-    // error_reporter->Report("num:%d score:%d", i,
-    //                     output->data.int8[i]);
-    if (layer->data.int8[i] > max)
-    {
-      result = i;
-      max = layer->data.int8[i];
-    }
-  }
-  return result;
-}
-
-int8_t uint8GrayscaleIint8(uint8_t uint8color)
-{
-  return (int8_t)(((int)uint8color) - 128); // is there a better way?
-}
-uint8_t int8GrayscaleUint8(int8_t int8color)
-{
-  return (uint8_t)(((int)int8color) + 128); // is there a better way?
-}
-
-uint inferNumberImage(int8_t *mnistimage)
-{
-  memcpy(input->data.int8, mnistimage, 28 * 28);
-  for (int i = 0; i < 28 * 28; i++)
-  {
-    input->data.int8[i] = mnistimage[i];
-  }
-  int start = millis();
-  error_reporter->Report("Invoking.");
-
-  if (kTfLiteOk != interpreter->Invoke()) // Any error i have in invoke tend to just crash the whole system so i dont usually see this message
-  {
-    error_reporter->Report("Invoke failed.");
-  }
-  else
-  {
-    error_reporter->Report("Invoke passed.");
-    error_reporter->Report(" Took :");
-    Serial.print(millis() - start);
-    error_reporter->Report(" milliseconds");
-  }
-
-  TfLiteTensor *output = interpreter->output(0);
-  uint result = oneHotDecode(output);
-  return result;
-}
-
-/// @brief Tests the preloaded images of numbers
-void testPreloadedNumbers()
-{
-  Serial.print("Testing One. Result:");
-
-  uint num = inferNumberImage(number1Sample);
-  Serial.print("Testing One. Result:");
-  Serial.println(num);
-  num = inferNumberImage(number2Sample);
-  Serial.print("Testing two. Result:");
-  Serial.println(num);
-  num = inferNumberImage(number4Sample);
-  Serial.print("Testing four. Result:");
-  Serial.println(num);
-  num = inferNumberImage(number5Sample);
-  Serial.print("Testing five. Result:");
-  Serial.println(num);
-  num = inferNumberImage(number8Sample);
-  Serial.print("Testing eight. Result:");
-  Serial.println(num);
-  num = inferNumberImage(number9Sample);
-  Serial.print("Testing nine. Result:");
-  Serial.println(num);
-}
-
 void loop()
 {
-  // start task
 
-  //  testPreloadedNumbers();
   server.handleClient();
+  delay(10);
 }
