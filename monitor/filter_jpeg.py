@@ -15,7 +15,12 @@ class JpegFilter(DeviceMonitorFilterBase):
         if not os.path.isdir("logged_jpegs"):
             os.makedirs("logged_jpegs")
 
-
+    def set_running_terminal(self, terminal):
+        # force to Latin-1, issue #4732
+        # without this encoding some bytes are lost
+        if terminal.input_encoding == "UTF-8":
+            terminal.set_rx_encoding("Latin-1")
+        super().set_running_terminal(terminal)
 
     def rx(self, text):
         self.buffer += text
@@ -31,7 +36,7 @@ class JpegFilter(DeviceMonitorFilterBase):
             )
             self.image_count = self.image_count + 1
             with open(log_file_name, "wb") as f:
-                f.write(base64.b64decode(jpeg_data))
+                f.write(jpeg_data.encode("latin1"))
             self.buffer = self.buffer[end_index + len(end_marker):]
             return f"Saved: {log_file_name}\n" + self.buffer
         if start_index != -1:

@@ -118,12 +118,12 @@ namespace
 void serialWriteJpeg(uint8_t *jpegBytes, size_t jpegSize)
 {
   Serial.print("StartJPEG123456");
-  size_t outlen;
-  size_t base64jpegBufferSize = 30000;
-  // Used for base64 encoding jpeg over
-  unsigned char *jpegEncodedBuffer = (unsigned char *)ps_malloc(base64jpegBufferSize);
-  mbedtls_base64_encode(jpegEncodedBuffer, base64jpegBufferSize, &outlen, jpegBytes, jpegSize);
-  Serial.write(jpegEncodedBuffer, outlen);
+  // size_t outlen;
+  //  size_t base64jpegBufferSize = 30000;
+  //  // Used for base64 encoding jpeg over
+  //  unsigned char *jpegEncodedBuffer = (unsigned char *)ps_malloc(base64jpegBufferSize);
+  //  mbedtls_base64_encode(jpegEncodedBuffer, base64jpegBufferSize, &outlen, jpegBytes, jpegSize);
+  Serial.write(jpegBytes, jpegSize);
   Serial.print("EndJPEG123456");
 }
 
@@ -139,7 +139,7 @@ void updateJpegBuffer()
                    // frame2jpg will malloc the buffer for jpegBytes
                    // gain lock the buffer should not change mid frame
   frame2jpg(grayScalefb, 50, &jpegBytes, &jpegSize);
-  // serialWriteJpeg(jpegBytes, jpegSize);
+  serialWriteJpeg(jpegBytes, jpegSize);
   ESP_LOGI(TAG, "updated jpeg buffer");
 }
 /// @brief Returns the index of the max value
