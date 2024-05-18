@@ -11,6 +11,7 @@ class JpegFilter(DeviceMonitorFilterBase):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.buffer = ""
+        self.reading_jpeg = False
         self.image_count = 0
         if not os.path.isdir("logged_jpegs"):
             os.makedirs("logged_jpegs")
@@ -27,6 +28,10 @@ class JpegFilter(DeviceMonitorFilterBase):
         start_marker = "StartJPEG123456"
         end_marker = "EndJPEG123456"
         start_index = self.buffer.find(start_marker)
+        output = ""
+        if start_index != -1:
+            output = self.buffer[:start_index]
+            self.reading_jpeg = True
         end_index = self.buffer.find(end_marker)
 
         if start_index != -1 and end_index != -1:
@@ -38,10 +43,13 @@ class JpegFilter(DeviceMonitorFilterBase):
             with open(log_file_name, "wb") as f:
                 f.write(jpeg_data.encode("latin1"))
             self.buffer = self.buffer[end_index + len(end_marker):]
+            self.reading_jpeg = False
             return f"Saved: {log_file_name}\n" + self.buffer
-        if start_index != -1:
-            ""
-        return text
+
+        if self.reading_jpeg:
+            return output
+        else:
+            return text
 
     def tx(self, text):
         #print(f"Sent: {text}\n")
