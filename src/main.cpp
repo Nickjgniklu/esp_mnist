@@ -21,7 +21,8 @@
 #include "camera_config.h"
 #include "sampleDigits/sampleDigits.h"
 #include "mbedtls/base64.h"
-#include "ImageFormater.h"
+#include <ImageFormater.h>
+#include <ConversionTools.h>
 
 // #define SOFTAP_MODE
 #define ENABLE_MJPEG
@@ -30,6 +31,7 @@ uint8_t *grayScaleBuffer;
 uint8_t *jpegBytes;
 size_t jpegSize;
 size_t raw_image_size = (320 * 240);
+size_t model_input_size = 28 * 28; // minst images are 28x28
 camera_fb_t *grayScalefb = new camera_fb_t();
 OV2640 camera;
 ImageFormater formatter;
@@ -158,22 +160,10 @@ uint oneHotDecode(TfLiteTensor *layer)
   return result;
 }
 
-int8_t uint8GrayscaleIint8(uint8_t uint8color)
-{
-  return (int8_t)(((int)uint8color) - 128); // is there a better way?
-}
-uint8_t int8GrayscaleUint8(int8_t int8color)
-{
-  return (uint8_t)(((int)int8color) + 128); // is there a better way?
-}
-
 uint inferNumberImage(int8_t *mnistimage)
 {
-  memcpy(input->data.int8, mnistimage, 28 * 28);
-  for (int i = 0; i < 28 * 28; i++)
-  {
-    input->data.int8[i] = mnistimage[i];
-  }
+  memcpy(input->data.int8, mnistimage, model_input_size);
+
   int start = millis();
   error_reporter->Report("Invoking.");
 
@@ -226,6 +216,8 @@ void fb_gfx_drawRect(fb_data_t *fb, int32_t x, int32_t y, int32_t w, int32_t h, 
   fb_gfx_drawFastVLine(fb, x, y, h, color);
   fb_gfx_drawFastVLine(fb, x + w, y, h, color);
 }
+
+/// @brief debug function to print memory info
 void print_memory_info()
 {
   uint32_t free_heap = esp_get_free_heap_size();
@@ -271,10 +263,7 @@ void handle_jpg_stream(void)
 
     int8_t *raw = (int8_t *)ps_malloc(grayScalefb->height * grayScalefb->width * sizeof(int8_t));
 
-    for (int i = 0; i < grayScalefb->width * grayScalefb->height; i++)
-    {
-      raw[i] = uint8GrayscaleIint8(grayScaleBuffer[i]);
-    }
+    ConversionTools::uint8_to_int8(grayScaleBuffer, raw, grayScalefb->width * grayScalefb->height);
     int8_t *mnist = (int8_t *)ps_malloc(28 * 28 * sizeof(int8_t));
 
     // preprocess image into minst format
@@ -284,12 +273,12 @@ void handle_jpg_stream(void)
     free(raw);
     ESP_LOGI(TAG, "overlay  mnist image");
 
+    // put a mnist formated image in the top left
     for (size_t i = 0; i < 28; i++)
     {
-      for (size_t j = 0; j < 28; j++)
-      {
-        grayScaleBuffer[j + (grayScalefb->width * i)] = int8GrayscaleUint8(mnist[j + (28 * i)]);
-      }
+      // copy the first 28 cols of each row in the minst
+      // to to corresponding row in the grayScaleBuffer
+      ConversionTools::int8_to_uint8(mnist + ((28 * i)), grayScaleBuffer + ((grayScalefb->width * i)), 28);
     }
 
     ESP_LOGI(TAG, "infer mnist image");
