@@ -11,19 +11,16 @@
 #include "main_functions.h"
 #include "image_provider.h"
 #include "model_settings.h"
-#include "mnist_model.h"
-#include "tensorflow/lite/micro/kernels/micro_ops.h"
+#include <mnist_model.h>
+#include <all_ops_resolver.h>
+
 #include "tensorflow/lite/micro/tflite_bridge/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
-#include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
-#include "tensorflow/lite/micro/micro_op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "camera_config.h"
 #include "sampleDigits/sampleDigits.h"
-#include "mbedtls/base64.h"
 #include <ImageFormater.h>
 #include <ConversionTools.h>
-
 // #define SOFTAP_MODE
 #define ENABLE_MJPEG
 #define TAG "main"
@@ -44,85 +41,15 @@ namespace
   // An area of memory to use for input, output, and intermediate arrays.
   const int kTensorArenaSize = 35 * 1024;
   static uint8_t tensor_arena[kTensorArenaSize];
-  using AllOpsResolver = tflite::MicroMutableOpResolver<128>;
 
-  TfLiteStatus RegisterOps(AllOpsResolver &resolver)
-  {
-    // Not all of these are needed for every model but it can be know you are missing one
-    // if you are missing one the esp32 will likely crash on invoke
-    // best practice it not adding all of them but only the ones you need
-    resolver.AddAbs();
-    resolver.AddAdd();
-    resolver.AddArgMax();
-    resolver.AddArgMin();
-    resolver.AddAveragePool2D();
-    resolver.AddCeil();
-    resolver.AddConcatenation();
-    resolver.AddConv2D();
-    resolver.AddCos();
-    resolver.AddDepthwiseConv2D();
-    resolver.AddDequantize();
-    resolver.AddEqual();
-    resolver.AddFloor();
-    resolver.AddFullyConnected();
-    resolver.AddGreater();
-    resolver.AddGreaterEqual();
-    resolver.AddHardSwish();
-    resolver.AddL2Normalization();
-    resolver.AddLess();
-    resolver.AddLessEqual();
-    resolver.AddLog();
-    resolver.AddLogicalAnd();
-    resolver.AddLogicalNot();
-    resolver.AddLogicalOr();
-    resolver.AddLogistic();
-    resolver.AddMaximum();
-    resolver.AddMaxPool2D();
-    resolver.AddMean();
-    resolver.AddMinimum();
-    resolver.AddMul();
-    resolver.AddNeg();
-    resolver.AddNotEqual();
-    resolver.AddPack();
-    resolver.AddPad();
-    resolver.AddPadV2();
-    resolver.AddPrelu();
-    resolver.AddQuantize();
-    resolver.AddReduceMax();
-    resolver.AddRelu();
-    resolver.AddRelu6();
-    resolver.AddReshape();
-    resolver.AddResizeNearestNeighbor();
-    resolver.AddRound();
-    resolver.AddRsqrt();
-    resolver.AddShape();
-    resolver.AddSin();
-    resolver.AddSoftmax();
-    resolver.AddSplit();
-    resolver.AddSplitV();
-    resolver.AddSqrt();
-    resolver.AddSquare();
-    resolver.AddStridedSlice();
-    resolver.AddSub();
-    resolver.AddSvdf();
-    resolver.AddTanh();
-    resolver.AddUnpack();
-
-    return TfLiteStatus::kTfLiteOk;
-  }
 }
-/// @brief Writes the jpeg bytes to the serial port as a base64 encoded string
+/// @brief Writes the jpeg bytes to the serial port as binary
 /// use JpegFilter to extract the jpeg bytes and save them to a file
 /// @param jpegBytes // the jpeg bytes to write
 /// @param jpegSize // the length of the jpeg bytes
 void serialWriteJpeg(uint8_t *jpegBytes, size_t jpegSize)
 {
   Serial.print("StartJPEG123456");
-  // size_t outlen;
-  //  size_t base64jpegBufferSize = 30000;
-  //  // Used for base64 encoding jpeg over
-  //  unsigned char *jpegEncodedBuffer = (unsigned char *)ps_malloc(base64jpegBufferSize);
-  //  mbedtls_base64_encode(jpegEncodedBuffer, base64jpegBufferSize, &outlen, jpegBytes, jpegSize);
   Serial.write(jpegBytes, jpegSize);
   Serial.print("EndJPEG123456");
 }
@@ -137,7 +64,6 @@ void updateJpegBuffer()
 
   free(jpegBytes); // free the previous buffer if any
                    // frame2jpg will malloc the buffer for jpegBytes
-                   // gain lock the buffer should not change mid frame
   frame2jpg(grayScalefb, 50, &jpegBytes, &jpegSize);
   serialWriteJpeg(jpegBytes, jpegSize);
   ESP_LOGI(TAG, "updated jpeg buffer");
@@ -159,7 +85,9 @@ uint oneHotDecode(TfLiteTensor *layer)
   }
   return result;
 }
-
+/// @brief take as 28 *28 image and runs inference to predict a number
+/// @param mnistimage
+/// @return
 uint inferNumberImage(int8_t *mnistimage)
 {
   memcpy(input->data.int8, mnistimage, model_input_size);
@@ -354,10 +282,7 @@ void initTFInterpreter()
         model->version(), TFLITE_SCHEMA_VERSION);
     return;
   }
-
-  AllOpsResolver op_resolver;
-  RegisterOps(op_resolver);
-
+  CREATE_ALL_OPS_RESOLVER(op_resolver)
   // Build an interpreter to run the model with.
   static tflite::MicroInterpreter static_interpreter(
       model, op_resolver, tensor_arena, kTensorArenaSize);
