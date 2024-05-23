@@ -9,3 +9,8 @@ in the development cycle.
 
 More information about PlatformIO Unit Testing:
 - https://docs.platformio.org/en/latest/advanced/unit-testing/index.html
+
+## Create jpeg as array
+ ffmpeg -i example_image.jpeg example_image.bmp
+ ffmpeg -i example_image.bmp example_image_color.jpeg
+ xxd -i ./example_image_color.jpeg > ./example_image.h
