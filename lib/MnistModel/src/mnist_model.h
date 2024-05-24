@@ -18,10 +18,12 @@ limitations under the License.
 // don't have a file system. It was created using the command:
 // xxd -i person_detect.tflite > person_detect_model_data.cc
 
+#include <tensorflow/lite/core/c/common.h>
+#include <sys/types.h>
 #ifndef MNIST_MODEL
 #define MNIST_MODEL
 
 extern const unsigned char mnist_model[];
 extern const unsigned int mnist_model_len;
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_PERSON_DETECTION_PERSON_DETECT_MODEL_DATA_H_
+#endif // TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_PERSON_DETECTION_PERSON_DETECT_MODEL_DATA_H_
