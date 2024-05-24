@@ -408,8 +408,8 @@ void setup()
 #endif
   const char *ipaddress = ip.toString().c_str();
   ESP_LOGI(TAG, "%s", ipaddress);
-  Serial.println("/mjpeg/1");
-  server.on("/mjpeg/1", HTTP_GET, handle_jpg_stream);
+  // Serial.println("/mjpeg/1");
+  // server.on("/mjpeg/1", HTTP_GET, handle_jpg_stream);
   server.onNotFound(handleNotFound);
   server.begin();
 
@@ -427,6 +427,13 @@ void setup()
 void loop()
 {
 
-  server.handleClient();
-  delay(10);
+  ESP_LOGI(TAG, "Getting Frame");
+  camera.run();
+  uint8_t *jpegBuffer = camera.getfb();
+  size_t jpegSize = camera.getSize();
+  ESP_LOGI(TAG, "Got JPEG Frame %d", jpegSize);
+  serialWriteJpeg(jpegBuffer, jpegSize);
+  ESP_LOGI(TAG, "Sent JPEG Frame");
+
+  delay(300);
 }

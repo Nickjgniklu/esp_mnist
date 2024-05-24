@@ -61,7 +61,7 @@ camera_config_t esp32cam_ESPCam_config{
     .xclk_freq_hz = 20000000,
     .ledc_timer = LEDC_TIMER_0,
     .ledc_channel = LEDC_CHANNEL_0,
-    .pixel_format = PIXFORMAT_GRAYSCALE,
+    .pixel_format = PIXFORMAT_JPEG,
     .frame_size = FRAMESIZE_QVGA,
     .jpeg_quality = 25,
     .fb_count = 1};
