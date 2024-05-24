@@ -5,7 +5,7 @@
 #include <ImageFormater.h>
 #include "esp_camera.h"
 
-#include "example_image.h"
+#include "example_color.h"
 ImageFormater formatter;
 
 void setUp(void)
@@ -36,15 +36,14 @@ void test_convert_int8_to_uint8(void)
     TEST_ASSERT_EQUAL_UINT8_ARRAY(expected_output, out, 5);
 }
 
-// TODO FIX THIS TEST EXAMPLE IS NOT A VALID IMAGE
 void test_format_mnist_image(void)
 {
     size_t height = 240;
     size_t width = 320;
     camera_fb_t *grayScalefb = new camera_fb_t();
-    grayScalefb->buf = __output_jpg;
+    grayScalefb->buf = __example_color_jpeg;
     grayScalefb->format = PIXFORMAT_JPEG;
-    grayScalefb->len = __output_jpg_len;
+    grayScalefb->len = __example_color_jpeg_len;
     grayScalefb->timestamp = {0, 0};
     grayScalefb->height = height;
     grayScalefb->width = width;
@@ -70,22 +69,17 @@ void test_format_mnist_image(void)
     formatter.CreateMnistImageFromImage(int_raw, width, height, mnist);
     free(int_raw);
 
-    // validate 28x28 image is only black and white
-    for (size_t i = 0; i < 28 * 28; i++)
+        // validate 28x28 image has 4 black border around the 20x20 center
+    for (size_t i = 0; i < 28; i++)
     {
-        TEST_ASSERT_TRUE_MESSAGE(mnist[i] == -128 || mnist[i] == 127, "mnist image is not black and white");
+        for (size_t j = 0; j < 28; j++)
+        {
+            if (i < 4 || i > 23 || j < 4 || j > 23)
+            {
+                TEST_ASSERT_TRUE_MESSAGE(mnist[i * 28 + j] == -128, "mnist image has bad border");
+            }
+        }
     }
-    // validate 28x28 image has 4 black border around the 20x20 center
-    // for (size_t i = 0; i < 28; i++)
-    // {
-    //     for (size_t j = 0; j < 28; j++)
-    //     {
-    //         if (i < 4 || i > 23 || j < 4 || j > 23)
-    //         {
-    //             TEST_ASSERT_TRUE_MESSAGE(mnist[i * 28 + j] == -128, "mnist image has bad border");
-    //         }
-    //     }
-    // }
     free(mnist);
 }
 
@@ -94,7 +88,7 @@ int runUnityTests(void)
     UNITY_BEGIN();
     RUN_TEST(test_convert_uint8_to_int8);
     RUN_TEST(test_convert_int8_to_uint8);
-    // RUN_TEST(test_format_mnist_image);
+    RUN_TEST(test_format_mnist_image);
     return UNITY_END();
 }
 

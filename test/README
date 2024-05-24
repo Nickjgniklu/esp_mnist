@@ -11,6 +11,6 @@ More information about PlatformIO Unit Testing:
 - https://docs.platformio.org/en/latest/advanced/unit-testing/index.html
 
 ## Create jpeg as array
- ffmpeg -i example_image.jpeg example_image.bmp
- ffmpeg -i example_image.bmp example_image_color.jpeg
- xxd -i ./example_image_color.jpeg > ./example_image.h
+Capture jpeg and save it from esp32 then
+
+ xxd -i ./example_color.jpeg > ./example_color.h
