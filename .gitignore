@@ -6,3 +6,4 @@
 src/wifikeys.h
 logged_jpegs/*
 logs/*
+monitor/__pycache__/*
