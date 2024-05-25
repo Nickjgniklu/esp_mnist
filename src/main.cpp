@@ -25,6 +25,7 @@
 #define ENABLE_MJPEG
 #define TAG "main"
 uint8_t *grayScaleBuffer;
+uint8_t *rgbBuffer;
 uint8_t *jpegBytes;
 size_t jpegSize;
 size_t raw_image_size = (320 * 240);
@@ -176,13 +177,16 @@ void handle_jpg_stream(void)
 
     print_memory_info();
 
-    ESP_LOGI(TAG, "Get Camera Frame");
+    ESP_LOGI(TAG, "Load Camera Frame");
 
     camera.run();
     ESP_LOGI(TAG, "Got Camera Frame");
 
+    fmt2rgb888(camera.getfb(), camera.getSize(), PIXFORMAT_JPEG, rgbBuffer);
+    ConversionTools::uint8_rgb_to_uint8_grayscale(rgbBuffer, grayScaleBuffer, raw_image_size);
+
     // copy frame
-    memcpy(grayScaleBuffer, camera.getfb(), grayScalefb->width * grayScalefb->height);
+    // memcpy(grayScaleBuffer, camera.getfb(), grayScalefb->width * grayScalefb->height);
     ESP_LOGI(TAG, "Copy Camera Frame");
 
     // convert to uint to int
@@ -355,7 +359,7 @@ void updateImageTask(void *param)
 
 void setup()
 {
-
+  rgbBuffer = (uint8_t *)ps_malloc(raw_image_size * 3);
   grayScaleBuffer = (uint8_t *)ps_malloc(raw_image_size);
 
   grayScalefb->buf = grayScaleBuffer;
