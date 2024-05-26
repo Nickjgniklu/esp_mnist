@@ -63,7 +63,6 @@ uint ImageFormater::GetCenterOfMassY(int8_t *img, uint width, uint height, int8_
 /// <returns></returns>
 void ImageFormater::applyThreshold(int8_t thresLevel, int8_t *img, uint length)
 {
-	std::cout << "Thres level " << (int)thresLevel << "\n";
 	for (int i = 0; i < length; i++)
 	{
 		if (img[i] > thresLevel)
@@ -158,7 +157,6 @@ void ImageFormater::applyThicken(int8_t *img, uint width, uint height)
 }
 /// <summary>
 /// takes a large image and abounding box of a potential digit and out puts a 20 by 20 digit that is scaled to fill toa n output image size
-/// assume square
 /// </summary>
 /// <param name="img">larger image</param>
 /// <param name="width">width of larger image</param>
@@ -176,10 +174,6 @@ void ImageFormater::scale20by20digit(int8_t *img, uint width, uint height, uint 
 	// scale relative to largest axis to be 20 on the largest axis
 	float centerRatioX = ((((float)(bright - bleft)) / 2.0) / ((float)(bright - bleft)));
 	float centerRatioY = ((((float)(bbottom - btop)) / 2.0) / ((float)(bbottom - btop)));
-	if (bright - bleft != bbottom - btop)
-	{
-		throw; // assume square
-	}
 
 	for (float i = 0; i < 20; i++)
 	{
@@ -306,8 +300,6 @@ void ImageFormater::crop20by20Digit(int8_t *img, uint width, uint height, int8_t
 
 	uint centerOfMassX = GetCenterOfMassX(img, width, height, THRESHOLD);
 	uint centerOfMassY = GetCenterOfMassY(img, width, height, THRESHOLD);
-	std::cout << "center X " << centerOfMassX;
-	std::cout << "center Y " << centerOfMassY;
 #ifdef DEBUGVIAOPENCV
 
 	SetElement(img, 160, centerOfMassY, centerOfMassX, 0);
@@ -317,7 +309,6 @@ void ImageFormater::crop20by20Digit(int8_t *img, uint width, uint height, int8_t
 	SetElement(img, 160, 159, 119, 0);
 #endif
 	int radius = GetBoundingBoxRadius(img, width, height, centerOfMassX, centerOfMassY);
-	std::cout << "Radius " << radius;
 #ifdef DEBUGVIAOPENCV
 
 	SetElement(img, 160, centerOfMassY - radius, centerOfMassX - radius, 0);
@@ -330,10 +321,19 @@ void ImageFormater::crop20by20Digit(int8_t *img, uint width, uint height, int8_t
 	cv::waitKey(0);
 #endif
 	// we have to take the area the digit is in and scale it to fit in a 20 by 20 window
-	uint left = centerOfMassX - radius;
-	uint top = centerOfMassY - radius;
-	uint right = centerOfMassX + radius;
-	uint bottom = centerOfMassY + radius;
+	int left = centerOfMassX - radius;
+	int top = centerOfMassY - radius;
+	int right = centerOfMassX + radius;
+	int bottom = centerOfMassY + radius;
+	if (left < 0)
+		left = 0;
+	if (top < 0)
+		top = 0;
+	if (right > width)
+		right = width;
+	if (bottom > height)
+		bottom = height;
+
 	scale20by20digit(img, width, height, left, top, right, bottom, outImg, 20, 20);
 }
 
@@ -347,7 +347,6 @@ void ImageFormater::CreateMnistImageFromImage(int8_t *inputImage, uint width, ui
 	applyThicken(inputImage, width, height);
 	applyThicken(inputImage, width, height);
 	int8_t img20by20[20 * 20];
-
 	crop20by20Digit(inputImage, width, height, img20by20);
 	createMnistImageFromDigit(img20by20, mnistFormatedOutputimage);
 }

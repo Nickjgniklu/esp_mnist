@@ -142,7 +142,7 @@ void test_format_mnist_image(void)
 
     int8_t *mnist = (int8_t *)ps_malloc(28 * 28 * sizeof(int8_t));
     ESP_LOGI("s", "format");
-    // TODO why crash
+
     formatter.CreateMnistImageFromImage(int_raw, width, height, mnist);
     free(int_raw);
     ESP_LOGI("s", "formatted");
@@ -191,7 +191,7 @@ int runUnityTests(void)
     UNITY_BEGIN();
     RUN_TEST(test_convert_uint8_to_int8);
     RUN_TEST(test_convert_int8_to_uint8);
-    // RUN_TEST(test_format_mnist_image);
+    RUN_TEST(test_format_mnist_image);
     RUN_TEST(test_tensorflow_mnist_conv);
     return UNITY_END();
 }
