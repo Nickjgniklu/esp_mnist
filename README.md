@@ -18,7 +18,6 @@ The included model takes :
 
 ~1390 milliseconds to invoke on a ESP32_S3 without ESP_NN (tensorflow micro example implementations of layers)
 
-~217 milliseconds to invoke on a ESP32_S3 with ESP_NN
-With espS3 optimizations (espressif ansi c implementations)
+~217 milliseconds to invoke on a ESP32_S3 with ESP_NN (espressif ansi c implementations)
 
 ~21 milliseconds to invoke on a ESP32_S3 with ESP_NN (espressif s3 specific implementations)

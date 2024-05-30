@@ -17,22 +17,39 @@
 #include "tensorflow/lite/micro/tflite_bridge/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+
+#include "wifikeys.h"
 #include "camera_config.h"
-#include "sampleDigits/sampleDigits.h"
 #include <ImageFormater.h>
 #include <ConversionTools.h>
-// #define SOFTAP_MODE
-#define ENABLE_MJPEG
 #define TAG "main"
+
+// image size of images from the camera
+size_t input_width = 320;
+size_t input_height = 240;
+size_t raw_image_size = input_width * input_height;
+
+// image size of images accepted by the model
+size_t model_input_height = 28;
+size_t model_input_width = 28;
+size_t model_input_size = model_input_height * model_input_width; // minst images are 28x28
+
+/// @brief raw gray scale image
 uint8_t *grayScaleBuffer;
+/// @brief raw rgb image
 uint8_t *rgbBuffer;
-uint8_t *jpegBytes;
+/// @brief jpeg image
+uint8_t *jpegBuffer;
 size_t jpegSize;
-size_t raw_image_size = (320 * 240);
-size_t model_input_size = 28 * 28; // minst images are 28x28
+
+/// @brief wrapper object used for passing the grayScaleBuffer to the frame2jpg function
 camera_fb_t *grayScalefb = new camera_fb_t();
+
 OV2640 camera;
+/// @brief used to create mnist like images
 ImageFormater formatter;
+
+// only allow these variables to be accessed in this file
 namespace
 {
   tflite::ErrorReporter *error_reporter = nullptr;
@@ -42,16 +59,16 @@ namespace
   // An area of memory to use for input, output, and intermediate arrays.
   const int kTensorArenaSize = 35 * 1024;
   static uint8_t tensor_arena[kTensorArenaSize];
-
 }
+
 /// @brief Writes the jpeg bytes to the serial port as binary
 /// use JpegFilter to extract the jpeg bytes and save them to a file
-/// @param jpegBytes // the jpeg bytes to write
+/// @param jpegBuffer // the jpeg bytes to write
 /// @param jpegSize // the length of the jpeg bytes
-void serialWriteJpeg(uint8_t *jpegBytes, size_t jpegSize)
+void serialWriteJpeg(uint8_t *jpegBuffer, size_t jpegSize)
 {
   Serial.print("StartJPEG123456");
-  Serial.write(jpegBytes, jpegSize);
+  Serial.write(jpegBuffer, jpegSize);
   Serial.print("EndJPEG123456");
 }
 
@@ -61,12 +78,10 @@ void updateJpegBuffer()
 {
   ESP_LOGI(TAG, "update jpeg buffer");
 
-  Serial.println("Setup fb");
-
-  free(jpegBytes); // free the previous buffer if any
-                   // frame2jpg will malloc the buffer for jpegBytes
-  frame2jpg(grayScalefb, 50, &jpegBytes, &jpegSize);
-  serialWriteJpeg(jpegBytes, jpegSize);
+  free(jpegBuffer); // free the previous buffer if any
+                    // frame2jpg will malloc the buffer for jpegBuffer
+  frame2jpg(grayScalefb, 50, &jpegBuffer, &jpegSize);
+  serialWriteJpeg(jpegBuffer, jpegSize);
   ESP_LOGI(TAG, "updated jpeg buffer");
 }
 /// @brief Returns the index of the max value
@@ -89,30 +104,62 @@ uint oneHotDecode(TfLiteTensor *layer)
 /// @brief take as 28 *28 image and runs inference to predict a number
 /// @param mnistimage
 /// @return
-uint inferNumberImage(int8_t *mnistimage)
+uint inferMnistImage(int8_t *mnistimage)
 {
+  ESP_LOGI(TAG, "Start inference");
+
   memcpy(input->data.int8, mnistimage, model_input_size);
 
   int start = millis();
-  error_reporter->Report("Invoking.");
+  ESP_LOGI(TAG, "Invoke");
 
   if (kTfLiteOk != interpreter->Invoke()) // Any error i have in invoke tend to just crash the whole system so i dont usually see this message
   {
-    error_reporter->Report("Invoke failed.");
+    ESP_LOGE(TAG, "Invoke failed!");
   }
   else
   {
-    error_reporter->Report("Invoke passed.");
-    error_reporter->Report(" Took :");
-    Serial.print(millis() - start);
-    error_reporter->Report(" milliseconds");
+    ESP_LOGI(TAG, "Invoke success");
+    ESP_LOGI(TAG, "Time taken: %d milliseconds", millis() - start);
   }
 
   TfLiteTensor *output = interpreter->output(0);
   uint result = oneHotDecode(output);
   return result;
 }
-#ifdef ENABLE_MJPEG
+
+/// @brief Draws a hollow rectangle on the frame buffer
+void fb_gfx_drawRect(fb_data_t *fb, int32_t x, int32_t y, int32_t w, int32_t h, uint32_t color)
+{
+  fb_gfx_drawFastHLine(fb, x, y, w, color);
+  fb_gfx_drawFastHLine(fb, x, y + h, w, color);
+  fb_gfx_drawFastVLine(fb, x, y, h, color);
+  fb_gfx_drawFastVLine(fb, x + w, y, h, color);
+}
+
+/// @brief debug function to print memory info
+void print_memory_info()
+{
+  uint32_t free_heap = esp_get_free_heap_size();
+  uint32_t total_psram = heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
+  uint32_t free_psram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+
+  ESP_LOGI("MemoryInfo", "Free internal heap: %u", free_heap);
+  ESP_LOGI("MemoryInfo", "Total PSRAM: %u", total_psram);
+  ESP_LOGI("MemoryInfo", "Free PSRAM: %u", free_psram);
+}
+void drawResult(size_t result)
+{
+  fb_data_t fbdata;
+  fbdata.data = grayScaleBuffer;
+  fbdata.width = input_width;
+  fbdata.height = input_height;
+  fbdata.format = FB_GRAY;
+  fbdata.bytes_per_pixel = 1;
+  char resultString[20];
+  sprintf(resultString, "Result: %d", result);
+  fb_gfx_print(&fbdata, input_width / 4, input_height / 4, 127, resultString);
+}
 WebServer server(80);
 const char HEADER[] = "HTTP/1.1 200 OK\r\n"
                       "Access-Control-Allow-Origin: *\r\n"
@@ -137,30 +184,11 @@ void handleNotFound()
   server.send(200, "text / plain", message);
 }
 
-/// @brief Draws a hollow rectangle on the frame buffer
-void fb_gfx_drawRect(fb_data_t *fb, int32_t x, int32_t y, int32_t w, int32_t h, uint32_t color)
-{
-  fb_gfx_drawFastHLine(fb, x, y, w, color);
-  fb_gfx_drawFastHLine(fb, x, y + h, w, color);
-  fb_gfx_drawFastVLine(fb, x, y, h, color);
-  fb_gfx_drawFastVLine(fb, x + w, y, h, color);
-}
-
-/// @brief debug function to print memory info
-void print_memory_info()
-{
-  uint32_t free_heap = esp_get_free_heap_size();
-  uint32_t total_psram = heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
-  uint32_t free_psram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
-
-  ESP_LOGI("MemoryInfo", "Free internal heap: %u", free_heap);
-  ESP_LOGI("MemoryInfo", "Total PSRAM: %u", total_psram);
-  ESP_LOGI("MemoryInfo", "Free PSRAM: %u", free_psram);
-}
-
 /// @brief called when a client connects to the mjpeg stream
 void handle_jpg_stream(void)
 {
+  ESP_LOGE(TAG, "handle_jpg_stream");
+
   char buf[32];
   int s;
 
@@ -171,14 +199,17 @@ void handle_jpg_stream(void)
 
   while (true)
   {
+
     if (!client.connected())
+    {
+
+      ESP_LOGE(TAG, "Client disconnected");
       break;
-    Serial.print("start frame");
+    }
 
     print_memory_info();
 
     ESP_LOGI(TAG, "Load Camera Frame");
-
     camera.run();
     ESP_LOGI(TAG, "Got Camera Frame");
 
@@ -205,64 +236,32 @@ void handle_jpg_stream(void)
     free(raw);
     ESP_LOGI(TAG, "overlay  mnist image");
 
-    // put a mnist formated image in the top left
-    for (size_t i = 0; i < 28; i++)
+    // put a mnist formatted image in the top left
+    for (size_t i = 0; i < model_input_height; i++)
     {
-      // copy the first 28 cols of each row in the minst
+      // copy the first 28 cols of each row in the mnist
       // to to corresponding row in the grayScaleBuffer
-      ConversionTools::int8_to_uint8(mnist + ((28 * i)), grayScaleBuffer + ((grayScalefb->width * i)), 28);
+      ConversionTools::int8_to_uint8(mnist + ((model_input_width * i)), grayScaleBuffer + ((grayScalefb->width * i)), model_input_width);
     }
 
-    ESP_LOGI(TAG, "infer mnist image");
-
-    uint result = inferNumberImage(mnist);
-    ESP_LOGI(TAG, "update image with result %d", result);
+    uint result = inferMnistImage(mnist);
+    ESP_LOGI(TAG, "update image with results %d", result);
 
     free(mnist);
-    fb_data_t fbdata;
-    fbdata.data = grayScaleBuffer;
-    fbdata.width = grayScalefb->width;
-    fbdata.height = grayScalefb->height;
-    fbdata.format = FB_GRAY;
-    fbdata.bytes_per_pixel = 1;
-    char resultString[20];
-    sprintf(resultString, "Result: %d", result);
-    fb_gfx_print(&fbdata, grayScalefb->width / 4, grayScalefb->height / 4, 127, resultString);
-    // fb_gfx_drawRect(&fbdata, grayScalefb->width / 4, grayScalefb->height / 4, 127, 127, 127);
-    // delay(10);
 
-    unsigned long startTime = millis();
+    drawResult(result);
 
     updateJpegBuffer();
-    unsigned long endTime = millis();
-    Serial.print("Time spent updating jpeg buffer:");
-    Serial.println(endTime - startTime);
 
-    // delay(100); // TODO set frame rate and try and maintain it
-    startTime = millis();
     client.write(CTNTTYPE, cntLen);
     sprintf(buf, "%d\r\n\r\n", jpegSize);
     client.write(buf, strlen(buf));
-    client.write((char *)jpegBytes, jpegSize);
+    client.write((char *)jpegBuffer, jpegSize);
     client.write(BOUNDARY, bdrLen);
-    endTime = millis();
-    unsigned long frameRate = 1000 / (endTime - startTime);
-    Serial.print("Frame rate: ");
-    Serial.println(frameRate);
-    Serial.print("Time spent sending frame");
-    Serial.println(endTime - startTime);
 
-    print_memory_info();
-    Serial.print("end frame");
+    ESP_LOGI(TAG, "end frame");
   }
 }
-#endif
-
-#ifdef SOFTAP_MODE
-IPAddress apIP = IPAddress(192, 168, 1, 1);
-#else
-#include "wifikeys.h"
-#endif
 
 void initSerial()
 {
@@ -270,7 +269,27 @@ void initSerial()
   Serial.begin(115200);
   Serial.setTimeout(10000);
 }
+void printModelInfo()
+{
+  input = interpreter->input(0);
+  ESP_LOGI(TAG, "Input Shape");
+  for (int i = 0; i < input->dims->size; i++)
+  {
+    ESP_LOGI(TAG, "%d", input->dims->data[i]);
+  }
 
+  ESP_LOGI(TAG, "Input Type: %s", TfLiteTypeGetName(input->type));
+  ESP_LOGI(TAG, "Output Shape");
+
+  TfLiteTensor *output = interpreter->output(0);
+  for (int i = 0; i < output->dims->size; i++)
+  {
+    ESP_LOGI(TAG, "%d", output->dims->data[i]);
+  }
+  ESP_LOGI(TAG, "Output Type: %s", TfLiteTypeGetName(output->type));
+
+  ESP_LOGI(TAG, "Arena Size:%d bytes of memory", interpreter->arena_used_bytes());
+}
 void initTFInterpreter()
 {
   static tflite::MicroErrorReporter micro_error_reporter;
@@ -280,10 +299,7 @@ void initTFInterpreter()
   // Verify Version of Tf Micro matches Model's verson
   if (model->version() != TFLITE_SCHEMA_VERSION)
   {
-    error_reporter->Report(
-        "Model provided is schema version %d not equal "
-        "to supported version %d.",
-        model->version(), TFLITE_SCHEMA_VERSION);
+    ESP_LOGE(TAG, "Model provided is schema version %d not equal to supported version %d.", model->version(), TFLITE_SCHEMA_VERSION);
     return;
   }
   CREATE_ALL_OPS_RESOLVER(op_resolver)
@@ -296,69 +312,16 @@ void initTFInterpreter()
   TfLiteStatus allocate_status = interpreter->AllocateTensors();
   if (allocate_status != kTfLiteOk)
   {
-    error_reporter->Report("AllocateTensors() failed");
+    ESP_LOGE(TAG, "AllocateTensors() failed");
     return;
   }
 
-  // Get information about the memory area to use for the model's input.
-  input = interpreter->input(0);
-  error_reporter->Report("Input Shape");
-  for (int i = 0; i < input->dims->size; i++)
-  {
-    error_reporter->Report("%d", input->dims->data[i]);
-  }
-
-  error_reporter->Report(TfLiteTypeGetName(input->type));
-  error_reporter->Report("Output Shape");
-
-  TfLiteTensor *output = interpreter->output(0);
-  for (int i = 0; i < output->dims->size; i++)
-  {
-    error_reporter->Report("%d", output->dims->data[i]);
-  }
-  error_reporter->Report(TfLiteTypeGetName(output->type));
-  error_reporter->Report("Arena Used:%d bytes of memory", interpreter->arena_used_bytes());
-}
-void writeGrayScaleBuffer(uint index, uint8_t value)
-{
-  grayScaleBuffer[index] = value;
-}
-
-/// @brief Tests the preloaded images of numbers
-void testPreloadedNumbers()
-{
-  Serial.print("Testing One. Result:");
-
-  uint num = inferNumberImage(number1Sample);
-  Serial.print("Testing One. Result:");
-  Serial.println(num);
-  num = inferNumberImage(number2Sample);
-  Serial.print("Testing two. Result:");
-  Serial.println(num);
-  num = inferNumberImage(number4Sample);
-  Serial.print("Testing four. Result:");
-  Serial.println(num);
-  num = inferNumberImage(number5Sample);
-  Serial.print("Testing five. Result:");
-  Serial.println(num);
-  num = inferNumberImage(number8Sample);
-  Serial.print("Testing eight. Result:");
-  Serial.println(num);
-  num = inferNumberImage(number9Sample);
-  Serial.print("Testing nine. Result:");
-  Serial.println(num);
-}
-
-void updateImageTask(void *param)
-{
-  while (true)
-  {
-    delay(1);
-  }
+  printModelInfo();
 }
 
 void setup()
 {
+  delay(10000);
   rgbBuffer = (uint8_t *)ps_malloc(raw_image_size * 3);
   grayScaleBuffer = (uint8_t *)ps_malloc(raw_image_size);
 
@@ -366,8 +329,8 @@ void setup()
   grayScalefb->format = PIXFORMAT_GRAYSCALE;
   grayScalefb->len = 0;
   grayScalefb->timestamp = {0, 0};
-  grayScalefb->height = 240;
-  grayScalefb->width = 320;
+  grayScalefb->height = input_height;
+  grayScalefb->width = input_width;
 
   initSerial();
   initTFInterpreter();
@@ -376,61 +339,36 @@ void setup()
   camera.init(esp32cam_ESPCam_config);
   ESP_LOGI(TAG, "Started Camera");
 
-#ifdef SOFTAP_MODE
-  const char *hostname = "devcam";
-  // WiFi.hostname(hostname); // FIXME - find out why undefined
-  ESP_LOGI(TAG, "starting softAP");
-  WiFi.mode(WIFI_AP);
-  WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
-  bool result = WiFi.softAP(hostname, "12345678", 1, 0);
-  if (!result)
-  {
-    Serial.println("AP Config failed.");
-    return;
-  }
-  else
-  {
-    Serial.println("AP Config Success.");
-    Serial.print("AP MAC: ");
-    Serial.println(WiFi.softAPmacAddress());
-
-    ip = WiFi.softAPIP();
-  }
-#else
   ESP_LOGI(TAG, "Joining %s", ssid);
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
+  delay(10000);
+
   while (WiFi.status() != WL_CONNECTED)
   {
-    delay(500);
-    Serial.print(F("."));
+    delay(10000);
+
+    ESP_LOGI(TAG, "Waiting for connection to %s", ssid);
   }
+
   ip = WiFi.localIP();
-  Serial.println(F("WiFi connected"));
-  Serial.println("");
-  Serial.println(ip);
-#endif
-  const char *ipaddress = ip.toString().c_str();
-  ESP_LOGI(TAG, "%s", ipaddress);
-  Serial.println("/mjpeg/1");
+  ESP_LOGI(TAG, "Connected with ip of %s", ip.toString().c_str());
+  ESP_LOGI(TAG, "Starting mjpeg server at %s/mjpeg/1", ip.toString().c_str());
   server.on("/mjpeg/1", HTTP_GET, handle_jpg_stream);
   server.onNotFound(handleNotFound);
   server.begin();
 
+  // fill the buffer with a black and white pattern
   for (int i = 0; i < raw_image_size; i++)
   {
     // set every other pixel to black and white
     grayScaleBuffer[i] = (i % 2) ? 0 : 255;
   }
   updateJpegBuffer();
-  xTaskCreate(
-      updateImageTask,
-      "camera_task", 1024 * 2, NULL, 1, NULL);
 }
 
 void loop()
 {
-
   server.handleClient();
   delay(10);
 }
