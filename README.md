@@ -47,6 +47,7 @@ The model in this example is trained on the original mnist dataset. These images
 This example manually formats images to look like mnist images. The result of this formatting is show in the top left of the mjpeg stream and it what is passed to the tensorflow model.
 
 ![example image from mjpeg stream](image.png)
+
 To format images captured from the camera assumptions are made and as a result of those assumption this demo only works when pointed at single numbers on white backgrounds. 
 
 ### More info about how mnist images 
