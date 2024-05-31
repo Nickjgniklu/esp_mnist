@@ -1,6 +1,6 @@
 # A simple demo of ESP_TF
 ## Demo
-![Video](./esp_mnist_demo.mp4)
+![GIF](./esp_mnist_demo.gif)
 ## Supported boards
 The default board for this example is the
 `Seeed XIAO ESP32S3 Sense`
