@@ -1,24 +1,44 @@
 #include <OV2640.h>
-//CAMERA_MODULE_NAME "ESP-S3-EYE"
+#ifdef CAMERA_MODEL_SEEED_XIAO_ESP32S3
 #define CAMERA_PIN_PWDN -1
 #define CAMERA_PIN_RESET -1
 
-#define CAMERA_PIN_VSYNC 6
-#define CAMERA_PIN_HREF 7
+#define CAMERA_PIN_VSYNC 38
+#define CAMERA_PIN_HREF 47
 #define CAMERA_PIN_PCLK 13
-#define CAMERA_PIN_XCLK 15
+#define CAMERA_PIN_XCLK 10
 
-#define CAMERA_PIN_SIOD 4
-#define CAMERA_PIN_SIOC 5
+#define CAMERA_PIN_SIOD 40
+#define CAMERA_PIN_SIOC 39
 
-#define CAMERA_PIN_D0 11
-#define CAMERA_PIN_D1 9
-#define CAMERA_PIN_D2 8
-#define CAMERA_PIN_D3 10
-#define CAMERA_PIN_D4 12
-#define CAMERA_PIN_D5 18
-#define CAMERA_PIN_D6 17
-#define CAMERA_PIN_D7 16
+#define CAMERA_PIN_D0 15
+#define CAMERA_PIN_D1 17
+#define CAMERA_PIN_D2 18
+#define CAMERA_PIN_D3 16
+#define CAMERA_PIN_D4 14
+#define CAMERA_PIN_D5 12
+#define CAMERA_PIN_D6 11
+#define CAMERA_PIN_D7 48
+#endif
+
+#ifdef CAMERA_MODEL_AI_THINKER
+#define CAMERA_PIN_PWDN 32
+#define CAMERA_PIN_RESET -1
+#define CAMERA_PIN_XCLK 0
+#define CAMERA_PIN_SIOD 26
+#define CAMERA_PIN_SIOC 27
+#define CAMERA_PIN_D7 35
+#define CAMERA_PIN_D6 34
+#define CAMERA_PIN_D5 39
+#define CAMERA_PIN_D4 36
+#define CAMERA_PIN_D3 21
+#define CAMERA_PIN_D2 19
+#define CAMERA_PIN_D1 18
+#define CAMERA_PIN_D0 5
+#define CAMERA_PIN_VSYNC 25
+#define CAMERA_PIN_HREF 23
+#define CAMERA_PIN_PCLK 22
+#endif
 
 camera_config_t esp32cam_ESPCam_config{
 
@@ -41,8 +61,7 @@ camera_config_t esp32cam_ESPCam_config{
     .xclk_freq_hz = 20000000,
     .ledc_timer = LEDC_TIMER_0,
     .ledc_channel = LEDC_CHANNEL_0,
-    .pixel_format = PIXFORMAT_GRAYSCALE,
-    .frame_size = FRAMESIZE_QQVGA,
-    .jpeg_quality = 25, 
-    .fb_count = 1       
-};
+    .pixel_format = PIXFORMAT_JPEG,
+    .frame_size = FRAMESIZE_QVGA,
+    .jpeg_quality = 25,
+    .fb_count = 1};

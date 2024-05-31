@@ -9,3 +9,8 @@ in the development cycle.
 
 More information about PlatformIO Unit Testing:
 - https://docs.platformio.org/en/latest/advanced/unit-testing/index.html
+
+## Create jpeg as array
+Capture jpeg and save it from esp32 then
+
+ xxd -i ./example_color.jpeg > ./example_color.h
