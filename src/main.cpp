@@ -9,8 +9,6 @@
 
 #include "fb_gfx.h"
 #include "main_functions.h"
-#include "image_provider.h"
-#include "model_settings.h"
 #include <mnist_model.h>
 #include <all_ops_resolver.h>
 
@@ -158,7 +156,7 @@ void drawResult(size_t result)
   fbdata.bytes_per_pixel = 1;
   char resultString[20];
   sprintf(resultString, "Result: %d", result);
-  fb_gfx_print(&fbdata, input_width / 4, input_height / 4, 127, resultString);
+  fb_gfx_print(&fbdata, 10, input_height - 20, 0, resultString);
 }
 WebServer server(80);
 const char HEADER[] = "HTTP/1.1 200 OK\r\n"
